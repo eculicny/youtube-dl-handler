@@ -1,0 +1,19 @@
+version: "3"
+
+services:
+  youtube-dl:
+    build:
+      context: .
+    image: youtube-dl:dev
+    container_name: youtube_dl_dev
+    environment:
+      - VIDEO_DOWNLOADER_DIR=/downloader
+      - VIDEO_LANDING_DIR=/landing
+      - GOTIFY_APP_TOKEN
+      - GOTIFY_URL
+    volumes:
+      - .:/app
+      - ./landing:/landing
+      - ./downloader:/downloader
+       #- /mnt/plex_media/_landing:${VIDEO_LANDING_DIR}
+       #- /mnt/temp_dataset/youtube-dl-processing:${VIDEO_DOWNLOADER_DIR}
