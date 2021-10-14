@@ -7,6 +7,7 @@ from pathlib import Path
 from datetime import datetime
 import youtube_dl
 import configparser
+import subprocess
 
 GOTIFY_APP_TOKEN = "ALUL8ScjPWGS6ea" #os.environ["GOTIFY_APP_TOKEN"]  # TODO switch
 GOTIFY_URL = "https://gotify.ulicny.io" #os.environ["GOTIFY_URL"]  # TODO switch
@@ -17,6 +18,8 @@ SLEEP_INTERVAL = os.environ.get("SLEEP_INTERVAL", 300)
 PICKUP_DIR = DOWNLOADER_DIR / "pickup"
 PROCESSED_DIR = DOWNLOADER_DIR / "processed"
 ERRORS_DIR = DOWNLOADER_DIR / "errors"
+MUXED_DIR = LANDING_DIR / "muxed"
+MUXED_TEST_DIR = LANDING_DIR / "test"
 RETRIES = 2
 
 
@@ -51,15 +54,13 @@ def process_file(file_path: Path, error_count: int) -> bool:
     try:
         ydl_opts = {
             #"simulate": True,
+            #"noprogress": True,
             "verbose": True,
-            "outtmpl": f"{str(LANDING_DIR.absolute())}/%(title)s-%(id)s.%(ext)s",
-            "format": "bestvideo+bestaudio",
-            "merge_output_format": "mkv",
-            "subtitlesformat": "srt/best",
+            "outtmpl": f"{str(LANDING_DIR.absolute())}/%(id)s/%(title)s-%(id)s.%(ext)s",
+            "format": "(bestvideo[ext=mp4],bestaudio[ext=m4a])/(bestvideo,bestaudio)/best",
+            "subtitlesformat": "vtt/srt/best",
             "writesubtitles": True,
             "writeautomaticsub": True,
-            #"continuedl": False,
-            #"noprogress": True,
             "ratelimit": 2*(1024.0**2),
             "ignoreerrors": False,
             # TODO add playlist switching
@@ -67,15 +68,6 @@ def process_file(file_path: Path, error_count: int) -> bool:
             "noplaylist": True,
             "sleep_interval": 10,
             "max_sleep_interval": 60,
-            # postprocessors in order!
-            "postprocessors": [
-                {
-                    "key": "FFmpegSubtitlesConvertor",
-                    "format": "srt",
-                },
-                {"key": "FFmpegEmbedSubtitle"},
-                #{"key": "EmbedThumbnail"}, not available for mkv files
-            ]
         }
         if "cookies" in file_path.name:
             logger.info(f"Setting cookies for file {file_path.name}")
@@ -102,7 +94,7 @@ def process_file(file_path: Path, error_count: int) -> bool:
 
 if __name__ == "__main__":
     try:
-        [ path.mkdir(exist_ok=True) for path in [PICKUP_DIR, ERRORS_DIR, PROCESSED_DIR, LANDING_DIR] ]
+        [ path.mkdir(exist_ok=True) for path in [PICKUP_DIR, ERRORS_DIR, PROCESSED_DIR, LANDING_DIR, MUXED_DIR] ]
         dont_stop = True
         error_counts = {}
         while(dont_stop):
@@ -128,8 +120,75 @@ if __name__ == "__main__":
                     else:
                         logger.warning(f"Skipping non-file {unproc.name}")
                 logger.info(f"Processed: {count}. Failed: {errors}. Sleeping for {SLEEP_INTERVAL}s")
+
+                ffmpeg_language_meta = "language=eng"
+                for unmux in LANDING_DIR.glob('*'):
+                    if unmux not in [MUXED_DIR, MUXED_TEST_DIR]:
+                        logger.info(f"Muxing directory {unmux}")
+                        original_files = []
+                        proc = None
+                        try:
+                            # ffmpeg [-i <file> for file] -c:v libx265 -c:a copy -c:s srt -metadata:s:s:0 language=eng -metadata:s:a:0 language=eng <output>.mkv
+                            # move all files to muxed
+                            command = ["ffmpeg", "-y"]  # ffmpeg (force overwrite)
+                            output_file = None
+                            for input_file in unmux.glob('*'):
+                                original_files.append(input_file)
+                                command.append("-i")
+                                command.append(str(input_file.absolute()))
+                                if not output_file:
+                                    output_file = f"{str(input_file.parent.absolute())}/{input_file.name[:input_file.name.find('.')]}.mkv"
+                            if not output_file:
+                                output_file = f"{str(unmux.absolute())}/{unmux.name}.mkv"
+                            # video codec transcode
+                            command.append("-c:v")
+                            command.append("libx265")
+                            # audio codec transcode (just copy)
+                            command.append("-c:a")
+                            command.append("copy")
+                            command.append("-metadata:s:a:0")
+                            command.append(ffmpeg_language_meta)
+                            # subtitles codec transcode
+                            command.append("-c:s")
+                            command.append("srt")
+                            command.append("-metadata:s:s:0")
+                            command.append(ffmpeg_language_meta)
+                            # final output file
+                            command.append(output_file)
+                            logger.info(f"Running ffmpeg command: {command}")
+                            proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+                            for line in iter(proc.stdout.readline, ""):
+                                logger.info(line.strip())
+                            ret_code = proc.wait()
+                            if ret_code != 0:
+                                breakpoint()
+                                logger.error(f"Failed to run ffmpeg on directory{unmux.name}")
+                                for dir_file in unmux.glob('*'):
+                                    if dir_file not in original_files:
+                                        logger.info(f"Removing unoriginal file {str(dir_file.absolute())}")
+                                        dir_file.unlink()
+                            else:
+                                logger.info(f"Successfully muxed {unmux.name}")
+                                # TODO clean up source files?
+                        except Exception as exc:
+                            logger.error(f"Failed to mux directory {str(unmux.absolute())}. {exc}")
+                            for dir_file in unmux.glob('*'):
+                                if dir_file not in original_files:
+                                    logger.info(f"Removing unoriginal file {str(dir_file.absolute())}")
+                                    dir_file.unlink()
+                        except KeyboardInterrupt as exc:
+                            logger.warning(f"Keyboard interrupt while muxing directory {str(unmux.absolute())}. {exc}")
+                            if proc:
+                                proc.kill()
+                            for dir_file in unmux.glob('*'):
+                                if dir_file not in original_files:
+                                    logger.info(f"Removing unoriginal file {str(dir_file.absolute())}")
+                                    dir_file.unlink()
+                            raise
+                logger.info(f"Sleeping for {SLEEP_INTERVAL}s")
                 time.sleep(SLEEP_INTERVAL)
             except KeyboardInterrupt:
+                # TODO verify way to close out ffmpeg calls?
                 logger.warning("Keyboard interrupt encountered. Stopping loop.")
                 dont_stop = False
         logger.info("Shutting down")
