@@ -142,7 +142,7 @@ if __name__ == "__main__":
                                 output_file = f"{str(unmux.absolute())}/{unmux.name}.mkv"
                             # video codec transcode
                             command.append("-c:v")
-                            command.append("libx265")
+                            command.append("libx264")
                             # audio codec transcode (just copy)
                             command.append("-c:a")
                             command.append("copy")
