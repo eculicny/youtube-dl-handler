@@ -3,15 +3,14 @@ version: "3"
 services:
   ytdl-handler:
     build:
-      context: .
-    image: ytdl-handler:dev
-    container_name: ytdl-handler-dev
+      context: ${YT_HANDLER_DIR:-.}
+    image: ytdl-handler
+    container_name: ytdl-handler
     environment:
       - VIDEO_DOWNLOADER_DIR=/downloader
       - VIDEO_LANDING_DIR=/landing
       - GOTIFY_APP_TOKEN
       - GOTIFY_URL
     volumes:
-      - .:/app
-      - ${HOST_VIDEO_LANDING_DIR:-./landing}:/landing
-      - ${HOST_VIDEO_DOWNLOAD_DIR:-./downloader}:/downloader
+      - ${YT_HANDLER_HOST_VIDEO_LANDING_DIR:-./landing}:/landing
+      - ${YT_HANDLER_HOST_VIDEO_DOWNLOAD_DIR:-./downloader}:/downloader
