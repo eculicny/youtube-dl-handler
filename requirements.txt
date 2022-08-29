@@ -1,3 +1,4 @@
 requests
-youtube-dl
+yt-dlp
 loguru
+pyyaml
