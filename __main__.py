@@ -51,10 +51,10 @@ def process_dconfig(dconf: DownloadConfig, dl_opts: dict) -> bool:
     while error_count < RETRIES:
         try:
             if dconf.opts:
-                all_opts = zip(dl_opts, dconf.opts)
+                all_opts = dl_opts | dconf.opts
             else:
                 all_opts = dl_opts.copy()
-            logger.info(f"Downloading video at urls: {dconf.urls} Attempt {error_count}")
+            logger.info(f"Downloading video at urls: {dconf.urls} with options {all_opts} Attempt {error_count}")
             with YoutubeDL(all_opts) as ydl:
                 ydl.download(dconf.urls)
             logger.info(f"Successfully downloaded url list: {dconf.urls}")
