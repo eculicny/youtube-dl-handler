@@ -3,7 +3,7 @@ version: "3"
 services:
   ytdl-handler:
     build:
-      context: ${YT_HANDLER_DIR:-.}
+      context: .
     image: ytdl-handler
     container_name: ytdl-handler
     environment:
@@ -14,3 +14,9 @@ services:
     volumes:
       - ${YT_HANDLER_HOST_VIDEO_LANDING_DIR:-./landing}:/landing
       - ${YT_HANDLER_HOST_VIDEO_DOWNLOAD_DIR:-./downloader}:/downloader
+    networks:
+      - traefik
+
+networks:
+  traefik:
+    external: true
